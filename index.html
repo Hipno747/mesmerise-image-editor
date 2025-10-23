@@ -39,53 +39,20 @@
             <!-- Effects Panel Section -->
             <div class="effects-section">
                 <h2>Effects</h2>
-                <div class="effects-panel">
-                    
-                    <!-- Brightness -->
-                    <div class="effect-control">
-                        <label for="brightness">
-                            <span class="effect-name">Brightness</span>
-                            <span class="effect-value" id="brightnessValue">0</span>
-                        </label>
-                        <input type="range" id="brightness" min="-100" max="100" value="0" step="1">
+                <div class="effects-panel" id="effectsPanel">
+                    <button class="add-effect-btn" id="addEffectBtn">
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                            <path d="M10 4V16M4 10H16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                        Add Effect
+                    </button>
+                    <div class="dropdown-menu" id="dropdownMenu">
+                        <div class="dropdown-item" data-effect="brightness">Brightness</div>
+                        <div class="dropdown-item" data-effect="contrast">Contrast</div>
+                        <div class="dropdown-item" data-effect="saturation">Saturation</div>
+                        <div class="dropdown-item" data-effect="vignette">Vignette</div>
+                        <div class="dropdown-item" data-effect="grain">Camera Grain</div>
                     </div>
-                    
-                    <!-- Contrast -->
-                    <div class="effect-control">
-                        <label for="contrast">
-                            <span class="effect-name">Contrast</span>
-                            <span class="effect-value" id="contrastValue">0</span>
-                        </label>
-                        <input type="range" id="contrast" min="-100" max="100" value="0" step="1">
-                    </div>
-                    
-                    <!-- Saturation -->
-                    <div class="effect-control">
-                        <label for="saturation">
-                            <span class="effect-name">Saturation</span>
-                            <span class="effect-value" id="saturationValue">0</span>
-                        </label>
-                        <input type="range" id="saturation" min="-100" max="100" value="0" step="1">
-                    </div>
-                    
-                    <!-- Vignette -->
-                    <div class="effect-control">
-                        <label for="vignette">
-                            <span class="effect-name">Vignette</span>
-                            <span class="effect-value" id="vignetteValue">0</span>
-                        </label>
-                        <input type="range" id="vignette" min="0" max="100" value="0" step="1">
-                    </div>
-                    
-                    <!-- Camera Grain -->
-                    <div class="effect-control">
-                        <label for="grain">
-                            <span class="effect-name">Camera Grain</span>
-                            <span class="effect-value" id="grainValue">0</span>
-                        </label>
-                        <input type="range" id="grain" min="0" max="100" value="0" step="1">
-                    </div>
-                    
                 </div>
             </div>
         </div>
