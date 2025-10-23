@@ -251,8 +251,18 @@ function resetEffects() {
 function applyEffects() {
     if (!originalImage) return;
     
+    // Check if halftone is active - handle it separately and return early
+    // (halftone replaces the entire canvas and shouldn't be combined with other effects)
+    if (activeEffects.includes('halftone')) {
+        // Set canvas to original size for halftone
+        canvas.width = originalImage.width;
+        canvas.height = originalImage.height;
+        ctx.drawImage(originalImage, 0, 0);
+        applyHalftoneEffect();
+        return;
+    }
+    
     // Handle resolution effect first (if present)
-    let sourceImage = originalImage;
     let resolutionValue = 100;
     
     if (activeEffects.includes('resolution')) {
@@ -274,13 +284,6 @@ function applyEffects() {
     // If no other effects, just return
     if (activeEffects.length === 0 || (activeEffects.length === 1 && activeEffects[0] === 'resolution')) return;
     
-    // Check if halftone is active - handle it separately and return
-    // (halftone replaces the entire canvas and shouldn't be combined with other effects)
-    if (activeEffects.includes('halftone')) {
-        applyHalftoneEffect();
-        return;
-    }
-    
     // Get image data for pixel-based effects
     let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     let data = imageData.data;
@@ -292,17 +295,17 @@ function applyEffects() {
     const centerY = height / 2;
     const maxDistance = Math.sqrt(centerX * centerX + centerY * centerY);
     
-    // Apply pixel-based effects in order (skip resolution as it's already handled)
+    // Filter out resolution from pixel-based effects to avoid redundant checks
+    const pixelEffects = activeEffects.filter(e => e !== 'resolution');
+    
+    // Apply pixel-based effects in order
     for (let i = 0; i < data.length; i += 4) {
         let r = data[i];
         let g = data[i + 1];
         let b = data[i + 2];
         
         // Apply each active effect in order
-        for (const effectName of activeEffects) {
-            // Skip resolution as it's handled earlier
-            if (effectName === 'resolution') continue;
-            
+        for (const effectName of pixelEffects) {
             const value = effectValues[effectName];
             
             switch (effectName) {
