@@ -318,6 +318,49 @@ input[type="range"]::-moz-range-thumb:hover {
     transform: scale(1.1);
 }
 
+/* Halftone custom controls */
+.halftone-controls {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.halftone-control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.halftone-control-group label {
+    font-size: 12px;
+    color: #666;
+    font-weight: 500;
+    margin: 0;
+}
+
+.halftone-select {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background: white;
+    font-size: 14px;
+    color: #333;
+    cursor: pointer;
+    transition: border-color 0.2s ease;
+}
+
+.halftone-select:hover {
+    border-color: #667eea;
+}
+
+.halftone-select:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
 /* Responsive Design */
 @media (max-width: 968px) {
     .main-content {
