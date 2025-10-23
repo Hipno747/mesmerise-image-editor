@@ -262,7 +262,7 @@ function applyEffects() {
         return;
     }
     
-    // Handle resolution effect (defaults to 100% if not active)
+    // Handle resolution effect (use 100% if resolution effect is not active)
     let resolutionValue = 100;
     
     if (activeEffects.includes('resolution')) {
