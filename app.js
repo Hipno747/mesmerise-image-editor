@@ -403,6 +403,39 @@ function applyEffects() {
     ctx.putImageData(imageData, 0, 0);
 }
 
+// Helper function to draw halftone shape
+function drawHalftoneShape(halftoneCtx, shape, centerX, centerY, shapeSize) {
+    halftoneCtx.beginPath();
+    
+    switch (shape) {
+        case 'circle':
+            halftoneCtx.arc(centerX, centerY, shapeSize / 2, 0, Math.PI * 2);
+            break;
+            
+        case 'square':
+            halftoneCtx.rect(centerX - shapeSize / 2, centerY - shapeSize / 2, shapeSize, shapeSize);
+            break;
+            
+        case 'triangle':
+            const height = shapeSize * 0.866; // equilateral triangle height
+            halftoneCtx.moveTo(centerX, centerY - height / 2);
+            halftoneCtx.lineTo(centerX - shapeSize / 2, centerY + height / 2);
+            halftoneCtx.lineTo(centerX + shapeSize / 2, centerY + height / 2);
+            halftoneCtx.closePath();
+            break;
+            
+        case 'line':
+            halftoneCtx.moveTo(centerX - shapeSize / 2, centerY);
+            halftoneCtx.lineTo(centerX + shapeSize / 2, centerY);
+            halftoneCtx.lineWidth = Math.max(1, shapeSize / 3);
+            halftoneCtx.stroke();
+            return true; // Indicate that stroke was used instead of fill
+    }
+    
+    halftoneCtx.fill();
+    return false;
+}
+
 // Apply halftone effect
 function applyHalftoneEffect() {
     const halftoneConfig = effectValues['halftone'];
@@ -452,92 +485,24 @@ function applyHalftoneEffect() {
             const g = data[index + 1];
             const b = data[index + 2];
             
-            if (mode === 'color') {
-                // Color halftone - use RGB values directly
-                halftoneCtx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+            // Calculate brightness and shape size
+            const brightness = (r + g + b) / 3;
+            const darkness = 1 - (brightness / 255);
+            const shapeSize = dotSize * darkness * 0.9;
+            
+            if (shapeSize > 0.5) {
+                const centerX = x + dotSize / 2;
+                const centerY = y + dotSize / 2;
                 
-                // Calculate brightness for size calculation
-                const brightness = (r + g + b) / 3;
-                const darkness = 1 - (brightness / 255);
-                const shapeSize = dotSize * darkness * 0.9;
-                
-                if (shapeSize > 0.5) {
-                    const centerX = x + dotSize / 2;
-                    const centerY = y + dotSize / 2;
-                    
-                    halftoneCtx.beginPath();
-                    
-                    switch (shape) {
-                        case 'circle':
-                            halftoneCtx.arc(centerX, centerY, shapeSize / 2, 0, Math.PI * 2);
-                            break;
-                            
-                        case 'square':
-                            halftoneCtx.rect(centerX - shapeSize / 2, centerY - shapeSize / 2, shapeSize, shapeSize);
-                            break;
-                            
-                        case 'triangle':
-                            const height = shapeSize * 0.866; // equilateral triangle height
-                            halftoneCtx.moveTo(centerX, centerY - height / 2);
-                            halftoneCtx.lineTo(centerX - shapeSize / 2, centerY + height / 2);
-                            halftoneCtx.lineTo(centerX + shapeSize / 2, centerY + height / 2);
-                            halftoneCtx.closePath();
-                            break;
-                            
-                        case 'line':
-                            halftoneCtx.moveTo(centerX - shapeSize / 2, centerY);
-                            halftoneCtx.lineTo(centerX + shapeSize / 2, centerY);
-                            halftoneCtx.lineWidth = Math.max(1, shapeSize / 3);
-                            halftoneCtx.stroke();
-                            continue; // Skip fill for lines
-                    }
-                    
-                    halftoneCtx.fill();
+                // Set color based on mode
+                if (mode === 'color') {
+                    halftoneCtx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+                } else {
+                    halftoneCtx.fillStyle = 'black';
                 }
-            } else {
-                // Monochrome halftone
-                halftoneCtx.fillStyle = 'black';
                 
-                // Calculate brightness (inverted for halftone)
-                const brightness = (r + g + b) / 3;
-                const darkness = 1 - (brightness / 255);
-                
-                // Calculate shape size based on darkness
-                const shapeSize = dotSize * darkness * 0.9;
-                
-                if (shapeSize > 0.5) {
-                    const centerX = x + dotSize / 2;
-                    const centerY = y + dotSize / 2;
-                    
-                    halftoneCtx.beginPath();
-                    
-                    switch (shape) {
-                        case 'circle':
-                            halftoneCtx.arc(centerX, centerY, shapeSize / 2, 0, Math.PI * 2);
-                            break;
-                            
-                        case 'square':
-                            halftoneCtx.rect(centerX - shapeSize / 2, centerY - shapeSize / 2, shapeSize, shapeSize);
-                            break;
-                            
-                        case 'triangle':
-                            const height = shapeSize * 0.866; // equilateral triangle height
-                            halftoneCtx.moveTo(centerX, centerY - height / 2);
-                            halftoneCtx.lineTo(centerX - shapeSize / 2, centerY + height / 2);
-                            halftoneCtx.lineTo(centerX + shapeSize / 2, centerY + height / 2);
-                            halftoneCtx.closePath();
-                            break;
-                            
-                        case 'line':
-                            halftoneCtx.moveTo(centerX - shapeSize / 2, centerY);
-                            halftoneCtx.lineTo(centerX + shapeSize / 2, centerY);
-                            halftoneCtx.lineWidth = Math.max(1, shapeSize / 3);
-                            halftoneCtx.stroke();
-                            continue; // Skip fill for lines
-                    }
-                    
-                    halftoneCtx.fill();
-                }
+                // Draw the shape
+                drawHalftoneShape(halftoneCtx, shape, centerX, centerY, shapeSize);
             }
         }
     }
