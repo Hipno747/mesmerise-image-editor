@@ -262,7 +262,7 @@ function applyEffects() {
         return;
     }
     
-    // Handle resolution effect first (if present)
+    // Handle resolution effect (defaults to 100% if not active)
     let resolutionValue = 100;
     
     if (activeEffects.includes('resolution')) {
@@ -295,8 +295,9 @@ function applyEffects() {
     const centerY = height / 2;
     const maxDistance = Math.sqrt(centerX * centerX + centerY * centerY);
     
-    // Filter out resolution from pixel-based effects to avoid redundant checks
-    const pixelEffects = activeEffects.filter(e => e !== 'resolution');
+    // Filter out resolution and halftone from pixel-based effects
+    // (resolution is handled via canvas scaling, halftone is handled separately)
+    const pixelEffects = activeEffects.filter(e => e !== 'resolution' && e !== 'halftone');
     
     // Apply pixel-based effects in order
     for (let i = 0; i < data.length; i += 4) {
