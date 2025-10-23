@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mesmerise Image Editor</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Mesmerise Image Editor</h1>
+            <div class="header-controls">
+                <label for="imageUpload" class="upload-btn">
+                    <input type="file" id="imageUpload" accept="image/*" hidden>
+                    Choose Image
+                </label>
+                <button id="downloadBtn" class="download-btn">Download</button>
+                <button id="resetBtn" class="reset-btn">Reset</button>
+            </div>
+        </header>
+        
+        <div class="main-content">
+            <!-- Image Preview Section -->
+            <div class="preview-section">
+                <div class="canvas-container">
+                    <canvas id="imageCanvas"></canvas>
+                    <div class="placeholder" id="placeholder">
+                        <svg width="100" height="100" viewBox="0 0 100 100" fill="none">
+                            <path d="M20 70L35 55L45 65L65 45L80 60V70H20Z" fill="#666"/>
+                            <circle cx="35" cy="35" r="8" fill="#666"/>
+                            <rect x="10" y="10" width="80" height="80" stroke="#666" stroke-width="2" fill="none"/>
+                        </svg>
+                        <p>Choose an image to get started</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Effects Panel Section -->
+            <div class="effects-section">
+                <h2>Effects</h2>
+                <div class="effects-panel">
+                    
+                    <!-- Brightness -->
+                    <div class="effect-control">
+                        <label for="brightness">
+                            <span class="effect-name">Brightness</span>
+                            <span class="effect-value" id="brightnessValue">0</span>
+                        </label>
+                        <input type="range" id="brightness" min="-100" max="100" value="0" step="1">
+                    </div>
+                    
+                    <!-- Contrast -->
+                    <div class="effect-control">
+                        <label for="contrast">
+                            <span class="effect-name">Contrast</span>
+                            <span class="effect-value" id="contrastValue">0</span>
+                        </label>
+                        <input type="range" id="contrast" min="-100" max="100" value="0" step="1">
+                    </div>
+                    
+                    <!-- Saturation -->
+                    <div class="effect-control">
+                        <label for="saturation">
+                            <span class="effect-name">Saturation</span>
+                            <span class="effect-value" id="saturationValue">0</span>
+                        </label>
+                        <input type="range" id="saturation" min="-100" max="100" value="0" step="1">
+                    </div>
+                    
+                    <!-- Vignette -->
+                    <div class="effect-control">
+                        <label for="vignette">
+                            <span class="effect-name">Vignette</span>
+                            <span class="effect-value" id="vignetteValue">0</span>
+                        </label>
+                        <input type="range" id="vignette" min="0" max="100" value="0" step="1">
+                    </div>
+                    
+                    <!-- Camera Grain -->
+                    <div class="effect-control">
+                        <label for="grain">
+                            <span class="effect-name">Camera Grain</span>
+                            <span class="effect-value" id="grainValue">0</span>
+                        </label>
+                        <input type="range" id="grain" min="0" max="100" value="0" step="1">
+                    </div>
+                    
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="app.js"></script>
+</body>
+</html>
