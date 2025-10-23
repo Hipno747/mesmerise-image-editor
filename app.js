@@ -9,6 +9,8 @@ let effects = {
     vignette: 0,
     grain: 0
 };
+let debounceTimer = null;
+let animationFrameId = null;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -52,7 +54,18 @@ function handleImageUpload(e) {
 function updateEffect(effectName, value) {
     effects[effectName] = parseFloat(value);
     document.getElementById(effectName + 'Value').textContent = value;
-    applyEffects();
+    
+    // Debounce effect application for performance
+    if (debounceTimer) {
+        clearTimeout(debounceTimer);
+    }
+    if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+    }
+    
+    debounceTimer = setTimeout(() => {
+        animationFrameId = requestAnimationFrame(applyEffects);
+    }, 16); // ~60fps
 }
 
 // Reset all effects
@@ -97,29 +110,63 @@ function applyEffects() {
     let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     let data = imageData.data;
     
-    // Apply brightness, contrast, and saturation
+    // Pre-calculate factors
+    const brightnessFactor = effects.brightness * 2.55;
+    const contrastFactor = (259 * (effects.contrast + 255)) / (255 * (259 - effects.contrast));
+    const saturationFactor = 1 + (effects.saturation / 100);
+    const grainStrength = effects.grain * 2.55;
+    
+    // Pre-calculate vignette values if needed
+    const width = canvas.width;
+    const height = canvas.height;
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const maxDistance = Math.sqrt(centerX * centerX + centerY * centerY);
+    const vignetteStrength = effects.vignette / 100;
+    
+    // Apply all effects in a single pass
     for (let i = 0; i < data.length; i += 4) {
         let r = data[i];
         let g = data[i + 1];
         let b = data[i + 2];
         
         // Brightness
-        r += effects.brightness * 2.55;
-        g += effects.brightness * 2.55;
-        b += effects.brightness * 2.55;
+        r += brightnessFactor;
+        g += brightnessFactor;
+        b += brightnessFactor;
         
         // Contrast
-        const contrastFactor = (259 * (effects.contrast + 255)) / (255 * (259 - effects.contrast));
         r = contrastFactor * (r - 128) + 128;
         g = contrastFactor * (g - 128) + 128;
         b = contrastFactor * (b - 128) + 128;
         
         // Saturation
         const gray = 0.2989 * r + 0.5870 * g + 0.1140 * b;
-        const saturationFactor = 1 + (effects.saturation / 100);
         r = gray + saturationFactor * (r - gray);
         g = gray + saturationFactor * (g - gray);
         b = gray + saturationFactor * (b - gray);
+        
+        // Vignette (inline calculation)
+        if (effects.vignette > 0) {
+            const pixelIndex = i / 4;
+            const x = pixelIndex % width;
+            const y = Math.floor(pixelIndex / width);
+            const dx = x - centerX;
+            const dy = y - centerY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const vignetteFactor = 1 - (distance / maxDistance) * vignetteStrength;
+            r *= vignetteFactor;
+            g *= vignetteFactor;
+            b *= vignetteFactor;
+        }
+        
+        // Grain (optimized random calculation)
+        if (effects.grain > 0) {
+            const noise = (Math.random() - 0.5) * grainStrength;
+            r += noise;
+            g += noise;
+            b += noise;
+        }
         
         // Clamp values
         data[i] = Math.max(0, Math.min(255, r));
@@ -127,61 +174,7 @@ function applyEffects() {
         data[i + 2] = Math.max(0, Math.min(255, b));
     }
     
-    // Put modified image data back
-    ctx.putImageData(imageData, 0, 0);
-    
-    // Apply vignette effect
-    if (effects.vignette > 0) {
-        applyVignette();
-    }
-    
-    // Apply grain effect
-    if (effects.grain > 0) {
-        applyGrain();
-    }
-}
-
-// Apply vignette effect
-function applyVignette() {
-    const width = canvas.width;
-    const height = canvas.height;
-    const centerX = width / 2;
-    const centerY = height / 2;
-    const maxDistance = Math.sqrt(centerX * centerX + centerY * centerY);
-    
-    const imageData = ctx.getImageData(0, 0, width, height);
-    const data = imageData.data;
-    
-    for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-            const dx = x - centerX;
-            const dy = y - centerY;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            const vignetteFactor = 1 - (distance / maxDistance) * (effects.vignette / 100);
-            
-            const i = (y * width + x) * 4;
-            data[i] *= vignetteFactor;
-            data[i + 1] *= vignetteFactor;
-            data[i + 2] *= vignetteFactor;
-        }
-    }
-    
-    ctx.putImageData(imageData, 0, 0);
-}
-
-// Apply camera grain effect
-function applyGrain() {
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const data = imageData.data;
-    const grainStrength = effects.grain * 2.55;
-    
-    for (let i = 0; i < data.length; i += 4) {
-        const noise = (Math.random() - 0.5) * grainStrength;
-        data[i] = Math.max(0, Math.min(255, data[i] + noise));
-        data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + noise));
-        data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + noise));
-    }
-    
+    // Put modified image data back (single operation)
     ctx.putImageData(imageData, 0, 0);
 }
 
