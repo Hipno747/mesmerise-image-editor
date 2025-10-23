@@ -39,3 +39,5 @@ Works best in modern browsers:
 - Firefox 55+
 - Safari 11+
 - Edge 79+
+
+MADE WITH AI
