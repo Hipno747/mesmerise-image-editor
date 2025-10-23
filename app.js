@@ -274,9 +274,11 @@ function applyEffects() {
     // If no other effects, just return
     if (activeEffects.length === 0 || (activeEffects.length === 1 && activeEffects[0] === 'resolution')) return;
     
-    // Check if halftone is active - handle it separately
+    // Check if halftone is active - handle it separately and return
+    // (halftone replaces the entire canvas and shouldn't be combined with other effects)
     if (activeEffects.includes('halftone')) {
         applyHalftoneEffect();
+        return;
     }
     
     // Get image data for pixel-based effects
@@ -290,7 +292,7 @@ function applyEffects() {
     const centerY = height / 2;
     const maxDistance = Math.sqrt(centerX * centerX + centerY * centerY);
     
-    // Apply pixel-based effects in order
+    // Apply pixel-based effects in order (skip resolution as it's already handled)
     for (let i = 0; i < data.length; i += 4) {
         let r = data[i];
         let g = data[i + 1];
@@ -298,6 +300,9 @@ function applyEffects() {
         
         // Apply each active effect in order
         for (const effectName of activeEffects) {
+            // Skip resolution as it's handled earlier
+            if (effectName === 'resolution') continue;
+            
             const value = effectValues[effectName];
             
             switch (effectName) {
@@ -362,7 +367,6 @@ function applyEffects() {
                                 return (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
                             };
                             
-                            const current = getPixelBrightness(i);
                             const top = getPixelBrightness(i - width * 4);
                             const bottom = getPixelBrightness(i + width * 4);
                             const left = getPixelBrightness(i - 4);
