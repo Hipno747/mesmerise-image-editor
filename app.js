@@ -13,7 +13,18 @@ const effectDefinitions = {
     contrast: { name: 'Contrast', min: -100, max: 100, default: 0, step: 1 },
     saturation: { name: 'Saturation', min: -100, max: 100, default: 0, step: 1 },
     vignette: { name: 'Vignette', min: 0, max: 100, default: 0, step: 1 },
-    grain: { name: 'Camera Grain', min: 0, max: 100, default: 0, step: 1 }
+    grain: { name: 'Camera Grain', min: 0, max: 100, default: 0, step: 1 },
+    resolution: { name: 'Resolution', min: 10, max: 100, default: 100, step: 5 },
+    invert: { name: 'Invert', min: 0, max: 100, default: 0, step: 1 },
+    halftone: { 
+        name: 'Halftone', 
+        type: 'custom',
+        defaults: {
+            shape: 'circle',
+            size: 'medium',
+            mode: 'monochrome'
+        }
+    }
 };
 
 // Initialize
@@ -89,7 +100,14 @@ function addEffect(effectName) {
     
     // Add to active effects
     activeEffects.push(effectName);
-    effectValues[effectName] = effectDefinitions[effectName].default;
+    
+    // Set default value based on effect type
+    const def = effectDefinitions[effectName];
+    if (def.type === 'custom' && def.defaults) {
+        effectValues[effectName] = { ...def.defaults };
+    } else {
+        effectValues[effectName] = def.default;
+    }
     
     // Create effect control element
     const effectControl = createEffectControl(effectName);
@@ -111,18 +129,75 @@ function createEffectControl(effectName) {
     div.className = 'effect-control';
     div.dataset.effect = effectName;
     
-    div.innerHTML = `
-        <button class="remove-effect-btn" onclick="removeEffect('${effectName}')">×</button>
-        <label for="${effectName}">
-            <span class="effect-name">${def.name}</span>
-            <span class="effect-value" id="${effectName}Value">${def.default}</span>
-        </label>
-        <input type="range" id="${effectName}" min="${def.min}" max="${def.max}" value="${def.default}" step="${def.step}">
-    `;
-    
-    // Add event listener to the slider
-    const slider = div.querySelector('input[type="range"]');
-    slider.addEventListener('input', (e) => updateEffect(effectName, e.target.value));
+    // Handle halftone custom control
+    if (effectName === 'halftone') {
+        div.innerHTML = `
+            <button class="remove-effect-btn" onclick="removeEffect('${effectName}')">×</button>
+            <label>
+                <span class="effect-name">${def.name}</span>
+            </label>
+            <div class="halftone-controls">
+                <div class="halftone-control-group">
+                    <label for="${effectName}Shape">Shape</label>
+                    <select id="${effectName}Shape" class="halftone-select">
+                        <option value="circle">Circles</option>
+                        <option value="square">Squares</option>
+                        <option value="triangle">Triangles</option>
+                        <option value="line">Lines</option>
+                    </select>
+                </div>
+                <div class="halftone-control-group">
+                    <label for="${effectName}Size">Size</label>
+                    <select id="${effectName}Size" class="halftone-select">
+                        <option value="small">Small</option>
+                        <option value="medium" selected>Medium</option>
+                        <option value="large">Large</option>
+                    </select>
+                </div>
+                <div class="halftone-control-group">
+                    <label for="${effectName}Mode">Mode</label>
+                    <select id="${effectName}Mode" class="halftone-select">
+                        <option value="monochrome" selected>Monochrome</option>
+                        <option value="color">Color</option>
+                    </select>
+                </div>
+            </div>
+        `;
+        
+        // Add event listeners
+        const shapeSelect = div.querySelector(`#${effectName}Shape`);
+        const sizeSelect = div.querySelector(`#${effectName}Size`);
+        const modeSelect = div.querySelector(`#${effectName}Mode`);
+        
+        shapeSelect.addEventListener('change', (e) => {
+            effectValues[effectName].shape = e.target.value;
+            if (originalImage) applyEffects();
+        });
+        
+        sizeSelect.addEventListener('change', (e) => {
+            effectValues[effectName].size = e.target.value;
+            if (originalImage) applyEffects();
+        });
+        
+        modeSelect.addEventListener('change', (e) => {
+            effectValues[effectName].mode = e.target.value;
+            if (originalImage) applyEffects();
+        });
+    } else {
+        // Standard slider control
+        div.innerHTML = `
+            <button class="remove-effect-btn" onclick="removeEffect('${effectName}')">×</button>
+            <label for="${effectName}">
+                <span class="effect-name">${def.name}</span>
+                <span class="effect-value" id="${effectName}Value">${def.default}</span>
+            </label>
+            <input type="range" id="${effectName}" min="${def.min}" max="${def.max}" value="${def.default}" step="${def.step}">
+        `;
+        
+        // Add event listener to the slider
+        const slider = div.querySelector('input[type="range"]');
+        slider.addEventListener('input', (e) => updateEffect(effectName, e.target.value));
+    }
     
     return div;
 }
@@ -190,17 +265,50 @@ function resetEffects() {
 function applyEffects() {
     if (!originalImage) return;
     
-    // Set canvas size to match image
+    // Check if halftone is active - handle it separately and return early
+    // (halftone replaces the entire canvas and shouldn't be combined with other effects)
+    if (activeEffects.includes('halftone')) {
+        // Set canvas to original size for halftone
+        canvas.width = originalImage.width;
+        canvas.height = originalImage.height;
+        ctx.drawImage(originalImage, 0, 0);
+        applyHalftoneEffect();
+        return;
+    }
+    
+    // Handle resolution effect (use 100% if resolution effect is not active)
+    let resolutionValue = 100;
+    
+    if (activeEffects.includes('resolution')) {
+        resolutionValue = effectValues['resolution'];
+    }
+    
+    // Calculate scaled dimensions based on resolution
+    const scale = resolutionValue / 100;
+    const scaledWidth = Math.max(1, Math.round(originalImage.width * scale));
+    const scaledHeight = Math.max(1, Math.round(originalImage.height * scale));
+    
+    // Create an offscreen canvas for downscaling
+    const offscreenCanvas = document.createElement('canvas');
+    offscreenCanvas.width = scaledWidth;
+    offscreenCanvas.height = scaledHeight;
+    const offscreenCtx = offscreenCanvas.getContext('2d');
+    
+    // Draw scaled image to offscreen canvas
+    offscreenCtx.drawImage(originalImage, 0, 0, scaledWidth, scaledHeight);
+    
+    // Set main canvas to original size for display
     canvas.width = originalImage.width;
     canvas.height = originalImage.height;
     
-    // Draw original image
-    ctx.drawImage(originalImage, 0, 0);
+    // Draw the scaled image back at original size (pixelated effect)
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(offscreenCanvas, 0, 0, originalImage.width, originalImage.height);
     
-    // If no effects, just return
-    if (activeEffects.length === 0) return;
+    // If no other effects, just return
+    if (activeEffects.length === 0 || (activeEffects.length === 1 && activeEffects[0] === 'resolution')) return;
     
-    // Get image data
+    // Get image data for pixel-based effects
     let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     let data = imageData.data;
     
@@ -211,15 +319,19 @@ function applyEffects() {
     const centerY = height / 2;
     const maxDistance = Math.sqrt(centerX * centerX + centerY * centerY);
     
-    // Apply effects in order
+    // Filter out resolution and halftone from pixel-based effects
+    // (resolution is handled via canvas scaling, halftone is handled separately)
+    const pixelEffects = activeEffects.filter(e => e !== 'resolution' && e !== 'halftone');
+    
+    // Apply pixel-based effects in order
     for (let i = 0; i < data.length; i += 4) {
         let r = data[i];
         let g = data[i + 1];
         let b = data[i + 2];
         
         // Apply each active effect in order
-        for (const effectName of activeEffects) {
-            const value = effectValues[effectName] || 0;
+        for (const effectName of pixelEffects) {
+            const value = effectValues[effectName];
             
             switch (effectName) {
                 case 'brightness':
@@ -269,6 +381,15 @@ function applyEffects() {
                         b += noise;
                     }
                     break;
+                    
+                case 'invert':
+                    if (value > 0) {
+                        const invertStrength = value / 100;
+                        r = r + (255 - 2 * r) * invertStrength;
+                        g = g + (255 - 2 * g) * invertStrength;
+                        b = b + (255 - 2 * b) * invertStrength;
+                    }
+                    break;
             }
         }
         
@@ -280,6 +401,115 @@ function applyEffects() {
     
     // Put modified image data back (single operation)
     ctx.putImageData(imageData, 0, 0);
+}
+
+// Helper function to draw halftone shape
+function drawHalftoneShape(halftoneCtx, shape, centerX, centerY, shapeSize) {
+    halftoneCtx.beginPath();
+    
+    switch (shape) {
+        case 'circle':
+            halftoneCtx.arc(centerX, centerY, shapeSize / 2, 0, Math.PI * 2);
+            halftoneCtx.fill();
+            break;
+            
+        case 'square':
+            halftoneCtx.rect(centerX - shapeSize / 2, centerY - shapeSize / 2, shapeSize, shapeSize);
+            halftoneCtx.fill();
+            break;
+            
+        case 'triangle':
+            const height = shapeSize * 0.866; // equilateral triangle height
+            halftoneCtx.moveTo(centerX, centerY - height / 2);
+            halftoneCtx.lineTo(centerX - shapeSize / 2, centerY + height / 2);
+            halftoneCtx.lineTo(centerX + shapeSize / 2, centerY + height / 2);
+            halftoneCtx.closePath();
+            halftoneCtx.fill();
+            break;
+            
+        case 'line':
+            halftoneCtx.moveTo(centerX - shapeSize / 2, centerY);
+            halftoneCtx.lineTo(centerX + shapeSize / 2, centerY);
+            halftoneCtx.lineWidth = Math.max(1, shapeSize / 3);
+            halftoneCtx.stroke();
+            break;
+    }
+}
+
+// Apply halftone effect
+function applyHalftoneEffect() {
+    const halftoneConfig = effectValues['halftone'];
+    if (!halftoneConfig) return;
+    
+    const { shape, size, mode } = halftoneConfig;
+    
+    // Determine dot size based on selection
+    let dotSize;
+    switch (size) {
+        case 'small':
+            dotSize = 4;
+            break;
+        case 'medium':
+            dotSize = 8;
+            break;
+        case 'large':
+            dotSize = 12;
+            break;
+        default:
+            dotSize = 8;
+    }
+    
+    // Get current canvas data
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+    
+    // Create a new canvas for halftone
+    const halftoneCanvas = document.createElement('canvas');
+    halftoneCanvas.width = canvas.width;
+    halftoneCanvas.height = canvas.height;
+    const halftoneCtx = halftoneCanvas.getContext('2d');
+    
+    // Fill with white background
+    halftoneCtx.fillStyle = 'white';
+    halftoneCtx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Create halftone pattern
+    for (let y = 0; y < canvas.height; y += dotSize) {
+        for (let x = 0; x < canvas.width; x += dotSize) {
+            // Sample the center of the cell
+            const sampleX = Math.min(x + Math.floor(dotSize / 2), canvas.width - 1);
+            const sampleY = Math.min(y + Math.floor(dotSize / 2), canvas.height - 1);
+            const index = (sampleY * canvas.width + sampleX) * 4;
+            
+            const r = data[index];
+            const g = data[index + 1];
+            const b = data[index + 2];
+            
+            // Calculate brightness and shape size
+            const brightness = (r + g + b) / 3;
+            const darkness = 1 - (brightness / 255);
+            const shapeSize = dotSize * darkness * 0.9;
+            
+            if (shapeSize > 0.5) {
+                const centerX = x + dotSize / 2;
+                const centerY = y + dotSize / 2;
+                
+                // Set color based on mode
+                if (mode === 'color') {
+                    halftoneCtx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+                } else {
+                    halftoneCtx.fillStyle = 'black';
+                }
+                
+                // Draw the shape
+                drawHalftoneShape(halftoneCtx, shape, centerX, centerY, shapeSize);
+            }
+        }
+    }
+    
+    // Draw halftone result back to main canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(halftoneCanvas, 0, 0);
 }
 
 // Download image

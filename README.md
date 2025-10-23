@@ -12,6 +12,9 @@ An intuitive and easy-to-use web-based image editor with real-time photo effects
   - 🌈 **Saturation**: Control color intensity (-100 to +100)
   - 🎭 **Vignette**: Add artistic darkening at the edges (0 to 100)
   - 📷 **Camera Grain**: Add film-like grain effect (0 to 100)
+  - 🔍 **Resolution**: Change image resolution (10% to 100%)
+  - ✨ **Edge Glow**: CapCut-style edge glow effect (0 to 100)
+  - 🎯 **Halftone**: Classic halftone effect with customizable shapes (circles, squares, triangles, lines) and sizes (small, medium, large)
 - **Scrollable Effects Panel**: Easily navigate through all effects
 - **Download**: Save your edited image
 - **Reset**: Quickly reset all effects to default
