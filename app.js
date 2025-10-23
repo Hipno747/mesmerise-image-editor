@@ -410,10 +410,12 @@ function drawHalftoneShape(halftoneCtx, shape, centerX, centerY, shapeSize) {
     switch (shape) {
         case 'circle':
             halftoneCtx.arc(centerX, centerY, shapeSize / 2, 0, Math.PI * 2);
+            halftoneCtx.fill();
             break;
             
         case 'square':
             halftoneCtx.rect(centerX - shapeSize / 2, centerY - shapeSize / 2, shapeSize, shapeSize);
+            halftoneCtx.fill();
             break;
             
         case 'triangle':
@@ -422,6 +424,7 @@ function drawHalftoneShape(halftoneCtx, shape, centerX, centerY, shapeSize) {
             halftoneCtx.lineTo(centerX - shapeSize / 2, centerY + height / 2);
             halftoneCtx.lineTo(centerX + shapeSize / 2, centerY + height / 2);
             halftoneCtx.closePath();
+            halftoneCtx.fill();
             break;
             
         case 'line':
@@ -429,11 +432,8 @@ function drawHalftoneShape(halftoneCtx, shape, centerX, centerY, shapeSize) {
             halftoneCtx.lineTo(centerX + shapeSize / 2, centerY);
             halftoneCtx.lineWidth = Math.max(1, shapeSize / 3);
             halftoneCtx.stroke();
-            return true; // Indicate that stroke was used instead of fill
+            break;
     }
-    
-    halftoneCtx.fill();
-    return false;
 }
 
 // Apply halftone effect
