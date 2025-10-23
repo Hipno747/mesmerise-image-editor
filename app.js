@@ -2,8 +2,9 @@
 let originalImage = null;
 let canvas = null;
 let ctx = null;
-let activeEffects = []; // Array to maintain order of effects
-let effectValues = {}; // Object to store effect values
+let activeEffects = []; // Array to maintain order of effect instances: {id, name}
+let effectValues = {}; // Object to store effect values keyed by instance id
+let effectCounter = 0; // unique instance id counter
 let debounceTimer = null;
 let animationFrameId = null;
 
@@ -16,6 +17,16 @@ const effectDefinitions = {
     grain: { name: 'Camera Grain', min: 0, max: 100, default: 0, step: 1 },
     resolution: { name: 'Resolution', min: 10, max: 100, default: 100, step: 5 },
     invert: { name: 'Invert', min: 0, max: 100, default: 0, step: 1 },
+    duotone: {
+        name: 'Duotone',
+        type: 'custom',
+        defaults: {
+            colorA: '#0b3d91', // shadow color
+            colorB: '#ffd166', // highlight color
+            mix: 100,
+            mode: 'replace'
+        }
+    },
     halftone: { 
         name: 'Halftone', 
         type: 'custom',
@@ -40,7 +51,11 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Dropdown items
     document.querySelectorAll('.dropdown-item').forEach(item => {
-        item.addEventListener('click', () => addEffect(item.dataset.effect));
+        // Respect disabled state so resolution can't be added twice
+        item.addEventListener('click', (e) => {
+            if (item.classList.contains('disabled')) return;
+            addEffect(item.dataset.effect);
+        });
     });
     
     // Close dropdown when clicking outside
@@ -81,41 +96,60 @@ function toggleDropdown(e) {
 
 // Update dropdown to disable already added effects
 function updateDropdownItems() {
+    // Disable resolution if it's already present (only one allowed)
+    const hasResolution = activeEffects.some(e => e.name === 'resolution');
     document.querySelectorAll('.dropdown-item').forEach(item => {
-        const effect = item.dataset.effect;
-        if (activeEffects.includes(effect)) {
-            item.classList.add('disabled');
+        if (item.dataset.effect === 'resolution') {
+            if (hasResolution) {
+                item.classList.add('disabled');
+            } else {
+                item.classList.remove('disabled');
+            }
         } else {
             item.classList.remove('disabled');
         }
     });
 }
 
-// Add effect to the panel
+// Add effect instance to the panel (allows duplicates)
 function addEffect(effectName) {
-    if (activeEffects.includes(effectName)) return;
-    
     // Close dropdown
     document.getElementById('dropdownMenu').classList.remove('show');
-    
-    // Add to active effects
-    activeEffects.push(effectName);
-    
+
+    // Prevent adding a second resolution instance
+    if (effectName === 'resolution') {
+        const exists = activeEffects.some(e => e.name === 'resolution');
+        if (exists) {
+            // Optionally give user feedback
+            try { alert('Resolution can only be applied once.'); } catch (e) {}
+            return;
+        }
+    }
+
+    // Create unique instance id
+    effectCounter += 1;
+    const instanceId = `eff${effectCounter}`;
+
+    // Add instance to active effects array
+    activeEffects.push({ id: instanceId, name: effectName });
+
     // Set default value based on effect type
     const def = effectDefinitions[effectName];
-    if (def.type === 'custom' && def.defaults) {
-        effectValues[effectName] = { ...def.defaults };
+    if (def && def.type === 'custom' && def.defaults) {
+        effectValues[instanceId] = { ...def.defaults };
+    } else if (def) {
+        effectValues[instanceId] = def.default;
     } else {
-        effectValues[effectName] = def.default;
+        effectValues[instanceId] = 0;
     }
-    
+
     // Create effect control element
-    const effectControl = createEffectControl(effectName);
-    
+    const effectControl = createEffectControl(effectName, instanceId);
+
     // Insert before the add button
     const addButton = document.getElementById('addEffectBtn');
     addButton.parentNode.insertBefore(effectControl, addButton);
-    
+
     // Apply effects if image is loaded
     if (originalImage) {
         applyEffects();
@@ -123,23 +157,25 @@ function addEffect(effectName) {
 }
 
 // Create effect control element
-function createEffectControl(effectName) {
+// Create effect control element for a specific instance
+function createEffectControl(effectName, instanceId) {
     const def = effectDefinitions[effectName];
     const div = document.createElement('div');
     div.className = 'effect-control';
     div.dataset.effect = effectName;
+    div.dataset.instanceId = instanceId;
     
     // Handle halftone custom control
     if (effectName === 'halftone') {
         div.innerHTML = `
-            <button class="remove-effect-btn" onclick="removeEffect('${effectName}')">×</button>
+            <button class="remove-effect-btn" onclick="removeEffect('${instanceId}')">×</button>
             <label>
                 <span class="effect-name">${def.name}</span>
             </label>
             <div class="halftone-controls">
                 <div class="halftone-control-group">
-                    <label for="${effectName}Shape">Shape</label>
-                    <select id="${effectName}Shape" class="halftone-select">
+                    <label for="${instanceId}-Shape">Shape</label>
+                    <select id="${instanceId}-Shape" class="halftone-select">
                         <option value="circle">Circles</option>
                         <option value="square">Squares</option>
                         <option value="triangle">Triangles</option>
@@ -147,16 +183,16 @@ function createEffectControl(effectName) {
                     </select>
                 </div>
                 <div class="halftone-control-group">
-                    <label for="${effectName}Size">Size</label>
-                    <select id="${effectName}Size" class="halftone-select">
+                    <label for="${instanceId}-Size">Size</label>
+                    <select id="${instanceId}-Size" class="halftone-select">
                         <option value="small">Small</option>
                         <option value="medium" selected>Medium</option>
                         <option value="large">Large</option>
                     </select>
                 </div>
                 <div class="halftone-control-group">
-                    <label for="${effectName}Mode">Mode</label>
-                    <select id="${effectName}Mode" class="halftone-select">
+                    <label for="${instanceId}-Mode">Mode</label>
+                    <select id="${instanceId}-Mode" class="halftone-select">
                         <option value="monochrome" selected>Monochrome</option>
                         <option value="color">Color</option>
                     </select>
@@ -165,59 +201,126 @@ function createEffectControl(effectName) {
         `;
         
         // Add event listeners
-        const shapeSelect = div.querySelector(`#${effectName}Shape`);
-        const sizeSelect = div.querySelector(`#${effectName}Size`);
-        const modeSelect = div.querySelector(`#${effectName}Mode`);
+        const shapeSelect = div.querySelector(`#${instanceId}-Shape`);
+        const sizeSelect = div.querySelector(`#${instanceId}-Size`);
+        const modeSelect = div.querySelector(`#${instanceId}-Mode`);
         
         shapeSelect.addEventListener('change', (e) => {
-            effectValues[effectName].shape = e.target.value;
+            effectValues[instanceId].shape = e.target.value;
             if (originalImage) applyEffects();
         });
         
         sizeSelect.addEventListener('change', (e) => {
-            effectValues[effectName].size = e.target.value;
+            effectValues[instanceId].size = e.target.value;
             if (originalImage) applyEffects();
         });
         
         modeSelect.addEventListener('change', (e) => {
-            effectValues[effectName].mode = e.target.value;
+            effectValues[instanceId].mode = e.target.value;
             if (originalImage) applyEffects();
         });
     } else {
-        // Standard slider control
-        div.innerHTML = `
-            <button class="remove-effect-btn" onclick="removeEffect('${effectName}')">×</button>
-            <label for="${effectName}">
+        // Duotone custom control (colors + mix)
+        if (effectName === 'duotone') {
+            div.innerHTML = `
+            <button class="remove-effect-btn" onclick="removeEffect('${instanceId}')">×</button>
+            <label>
                 <span class="effect-name">${def.name}</span>
-                <span class="effect-value" id="${effectName}Value">${def.default}</span>
             </label>
-            <input type="range" id="${effectName}" min="${def.min}" max="${def.max}" value="${def.default}" step="${def.step}">
+            <div class="halftone-controls">
+                <div class="halftone-control-group">
+                    <label for="${instanceId}-ColorA">Shadow Color</label>
+                    <input type="color" id="${instanceId}-ColorA" value="${effectValues[instanceId] && effectValues[instanceId].colorA ? effectValues[instanceId].colorA : def.defaults.colorA}">
+                </div>
+                <div class="halftone-control-group">
+                    <label for="${instanceId}-ColorB">Highlight Color</label>
+                    <input type="color" id="${instanceId}-ColorB" value="${effectValues[instanceId] && effectValues[instanceId].colorB ? effectValues[instanceId].colorB : def.defaults.colorB}">
+                </div>
+                <div class="halftone-control-group">
+                    <label for="${instanceId}-Mix">Mix</label>
+                    <input type="range" id="${instanceId}-Mix" min="0" max="100" value="${effectValues[instanceId] && typeof effectValues[instanceId].mix !== 'undefined' ? effectValues[instanceId].mix : def.defaults.mix}" step="1">
+                    <span class="effect-value" id="${instanceId}MixValue">${effectValues[instanceId] && typeof effectValues[instanceId].mix !== 'undefined' ? effectValues[instanceId].mix : def.defaults.mix}</span>
+                </div>
+                <div class="halftone-control-group">
+                    <label for="${instanceId}-Mode">Mode</label>
+                    <select id="${instanceId}-Mode" class="halftone-select">
+                        <option value="replace" ${effectValues[instanceId] && effectValues[instanceId].mode === 'replace' ? 'selected' : ''}>Replace</option>
+                        <option value="overlay" ${effectValues[instanceId] && effectValues[instanceId].mode === 'overlay' ? 'selected' : ''}>Overlay</option>
+                    </select>
+                </div>
+            </div>
+            `;
+
+            // Wire up duotone controls
+            const cA = div.querySelector(`#${instanceId}-ColorA`);
+            const cB = div.querySelector(`#${instanceId}-ColorB`);
+            const mix = div.querySelector(`#${instanceId}-Mix`);
+            const mixVal = div.querySelector(`#${instanceId}MixValue`);
+            const modeSel = div.querySelector(`#${instanceId}-Mode`);
+
+            cA.addEventListener('input', (e) => {
+                effectValues[instanceId].colorA = e.target.value;
+                // debounce heavy rerender while user drags the color picker
+                scheduleApplyEffects(120);
+            });
+            cB.addEventListener('input', (e) => {
+                effectValues[instanceId].colorB = e.target.value;
+                // debounce heavy rerender while user drags the color picker
+                scheduleApplyEffects(120);
+            });
+            mix.addEventListener('input', (e) => {
+                const v = parseInt(e.target.value, 10);
+                effectValues[instanceId].mix = v;
+                if (mixVal) mixVal.textContent = v;
+                // mix slider can be frequent; debounce
+                scheduleApplyEffects(60);
+            });
+            modeSel.addEventListener('change', (e) => {
+                effectValues[instanceId].mode = e.target.value;
+                // mode change is infrequent; apply immediately
+                if (originalImage) applyEffects();
+            });
+
+            return div;
+        }
+
+        // Standard slider control
+        const valueDisplayId = `${instanceId}Value`;
+        const sliderId = `${instanceId}`;
+
+        div.innerHTML = `
+            <button class="remove-effect-btn" onclick="removeEffect('${instanceId}')">×</button>
+            <label for="${sliderId}">
+                <span class="effect-name">${def.name}</span>
+                <span class="effect-value" id="${valueDisplayId}">${def.default}</span>
+            </label>
+            <input type="range" id="${sliderId}" min="${def.min}" max="${def.max}" value="${def.default}" step="${def.step}">
         `;
         
         // Add event listener to the slider
         const slider = div.querySelector('input[type="range"]');
-        slider.addEventListener('input', (e) => updateEffect(effectName, e.target.value));
+        slider.addEventListener('input', (e) => updateEffect(instanceId, e.target.value));
     }
     
     return div;
 }
 
-// Remove effect from the panel
-function removeEffect(effectName) {
-    // Remove from active effects
-    const index = activeEffects.indexOf(effectName);
+// Remove effect instance from the panel
+function removeEffect(instanceId) {
+    // Remove from active effects by id
+    const index = activeEffects.findIndex(e => e.id === instanceId);
     if (index > -1) {
         activeEffects.splice(index, 1);
     }
-    delete effectValues[effectName];
+    delete effectValues[instanceId];
     
     // Remove DOM element
-    const effectControl = document.querySelector(`.effect-control[data-effect="${effectName}"]`);
+    const effectControl = document.querySelector(`.effect-control[data-instance-id="${instanceId}"]`);
     if (effectControl) {
         effectControl.remove();
     }
     
-    // Update dropdown
+    // Update dropdown (no disabling for duplicates)
     updateDropdownItems();
     
     // Reapply effects if image is loaded
@@ -226,10 +329,13 @@ function removeEffect(effectName) {
     }
 }
 
-// Update effect value
-function updateEffect(effectName, value) {
-    effectValues[effectName] = parseFloat(value);
-    document.getElementById(effectName + 'Value').textContent = value;
+// Update effect instance value
+function updateEffect(instanceId, value) {
+    // Update stored value (number) and UI
+    const parsed = parseFloat(value);
+    effectValues[instanceId] = parsed;
+    const valueEl = document.getElementById(instanceId + 'Value');
+    if (valueEl) valueEl.textContent = value;
     
     // Debounce effect application for performance
     if (debounceTimer) {
@@ -242,6 +348,20 @@ function updateEffect(effectName, value) {
     debounceTimer = setTimeout(() => {
         animationFrameId = requestAnimationFrame(applyEffects);
     }, 16); // ~60fps
+}
+
+// Schedule applying effects with debounce (used by controls that update frequently, like color pickers)
+function scheduleApplyEffects(delay = 120) {
+    if (!originalImage) return;
+    if (debounceTimer) {
+        clearTimeout(debounceTimer);
+    }
+    if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+    }
+    debounceTimer = setTimeout(() => {
+        animationFrameId = requestAnimationFrame(applyEffects);
+    }, delay);
 }
 
 // Reset all effects
@@ -264,90 +384,85 @@ function resetEffects() {
 // Apply all effects in the order they were added
 function applyEffects() {
     if (!originalImage) return;
-    
-    // Check if halftone is active - handle it separately and return early
-    // (halftone replaces the entire canvas and shouldn't be combined with other effects)
-    if (activeEffects.includes('halftone')) {
-        // Set canvas to original size for halftone
-        canvas.width = originalImage.width;
-        canvas.height = originalImage.height;
-        ctx.drawImage(originalImage, 0, 0);
-        applyHalftoneEffect();
-        return;
-    }
-    
-    // Handle resolution effect (use 100% if resolution effect is not active)
-    let resolutionValue = 100;
-    
-    if (activeEffects.includes('resolution')) {
-        resolutionValue = effectValues['resolution'];
-    }
-    
-    // Calculate scaled dimensions based on resolution
-    const scale = resolutionValue / 100;
-    const scaledWidth = Math.max(1, Math.round(originalImage.width * scale));
-    const scaledHeight = Math.max(1, Math.round(originalImage.height * scale));
-    
-    // Create an offscreen canvas for downscaling
-    const offscreenCanvas = document.createElement('canvas');
-    offscreenCanvas.width = scaledWidth;
-    offscreenCanvas.height = scaledHeight;
-    const offscreenCtx = offscreenCanvas.getContext('2d');
-    
-    // Draw scaled image to offscreen canvas
-    offscreenCtx.drawImage(originalImage, 0, 0, scaledWidth, scaledHeight);
-    
-    // Set main canvas to original size for display
+    // Start from the original image on the canvas
     canvas.width = originalImage.width;
     canvas.height = originalImage.height;
-    
-    // Draw the scaled image back at original size (pixelated effect)
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(offscreenCanvas, 0, 0, originalImage.width, originalImage.height);
-    
-    // If no other effects, just return
-    if (activeEffects.length === 0 || (activeEffects.length === 1 && activeEffects[0] === 'resolution')) return;
-    
-    // Get image data for pixel-based effects
-    let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    let data = imageData.data;
-    
-    // Pre-calculate values for all active effects
-    const width = canvas.width;
-    const height = canvas.height;
-    const centerX = width / 2;
-    const centerY = height / 2;
-    const maxDistance = Math.sqrt(centerX * centerX + centerY * centerY);
-    
-    // Filter out resolution and halftone from pixel-based effects
-    // (resolution is handled via canvas scaling, halftone is handled separately)
-    const pixelEffects = activeEffects.filter(e => e !== 'resolution' && e !== 'halftone');
-    
-    // Apply pixel-based effects in order
-    for (let i = 0; i < data.length; i += 4) {
-        let r = data[i];
-        let g = data[i + 1];
-        let b = data[i + 2];
-        
-        // Apply each active effect in order
-        for (const effectName of pixelEffects) {
-            const value = effectValues[effectName];
-            
-            switch (effectName) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(originalImage, 0, 0);
+
+    // If there are no effects, we're done
+    if (activeEffects.length === 0) return;
+
+    // Process effects in sequence (each instance mutates the canvas)
+    let resolutionApplied = false;
+    for (const inst of activeEffects) {
+        const name = inst.name;
+        const value = effectValues[inst.id];
+
+        // Resolution: downscale then draw back (pixelate) using current canvas as source
+        if (name === 'resolution') {
+            if (resolutionApplied) {
+                // Defensive: skip any extra resolution instances
+                try { console.debug('Skipping extra resolution instance', inst.id); } catch (e) {}
+                continue;
+            }
+            resolutionApplied = true;
+            const resVal = (typeof value === 'number') ? value : 100;
+            const scale = resVal / 100;
+            const sw = Math.max(1, Math.round(canvas.width * scale));
+            const sh = Math.max(1, Math.round(canvas.height * scale));
+
+            const off = document.createElement('canvas');
+            off.width = sw;
+            off.height = sh;
+            const offCtx = off.getContext('2d');
+            offCtx.imageSmoothingEnabled = false;
+            offCtx.drawImage(canvas, 0, 0, sw, sh);
+
+            // draw back to main canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(off, 0, 0, canvas.width, canvas.height);
+            continue;
+        }
+
+        // Halftone: sample the current canvas pixels and composite halftone on top
+        if (name === 'halftone') {
+            const sample = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            applyHalftoneEffect(inst, { overlay: true, sampleImageData: sample });
+            continue;
+        }
+
+        // Pixel-based effects: apply the single effect to the current canvas pixels
+        let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        let data = imageData.data;
+        const width = canvas.width;
+        const height = canvas.height;
+        const centerX = width / 2;
+        const centerY = height / 2;
+        const maxDistance = Math.sqrt(centerX * centerX + centerY * centerY);
+
+        for (let i = 0; i < data.length; i += 4) {
+            let r = data[i];
+            let g = data[i + 1];
+            let b = data[i + 2];
+
+            switch (name) {
                 case 'brightness':
                     const brightnessFactor = value * 2.55;
                     r += brightnessFactor;
                     g += brightnessFactor;
                     b += brightnessFactor;
                     break;
-                    
+
                 case 'contrast':
                     const contrastFactor = (259 * (value + 255)) / (255 * (259 - value));
                     r = contrastFactor * (r - 128) + 128;
                     g = contrastFactor * (g - 128) + 128;
                     b = contrastFactor * (b - 128) + 128;
                     break;
-                    
+
                 case 'saturation':
                     const saturationFactor = 1 + (value / 100);
                     const gray = 0.2989 * r + 0.5870 * g + 0.1140 * b;
@@ -355,7 +470,36 @@ function applyEffects() {
                     g = gray + saturationFactor * (g - gray);
                     b = gray + saturationFactor * (b - gray);
                     break;
-                    
+
+                case 'duotone':
+                    // value is an object: { colorA, colorB, mix, mode }
+                    if (value && typeof value === 'object') {
+                        // luminance 0..1
+                        const lum = Math.max(0, Math.min(1, (0.299 * r + 0.587 * g + 0.114 * b) / 255));
+
+                        const parseHex = (hex) => {
+                            const h = (hex || '#000000').replace('#', '');
+                            const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+                            const bigint = parseInt(full, 16) || 0;
+                            return [(bigint >> 16) & 255, (bigint >> 8) & 255, bigint & 255];
+                        };
+
+                        const ca = parseHex(value.colorA);
+                        const cb = parseHex(value.colorB);
+
+                        const dr = ca[0] + (cb[0] - ca[0]) * lum;
+                        const dg = ca[1] + (cb[1] - ca[1]) * lum;
+                        const db = ca[2] + (cb[2] - ca[2]) * lum;
+
+                        const mix = (typeof value.mix === 'number') ? (value.mix / 100) : 1;
+
+                        // Replace and overlay both do a simple mix with original for now
+                        r = r * (1 - mix) + dr * mix;
+                        g = g * (1 - mix) + dg * mix;
+                        b = b * (1 - mix) + db * mix;
+                    }
+                    break;
+
                 case 'vignette':
                     if (value > 0) {
                         const pixelIndex = i / 4;
@@ -371,7 +515,7 @@ function applyEffects() {
                         b *= vignetteFactor;
                     }
                     break;
-                    
+
                 case 'grain':
                     if (value > 0) {
                         const grainStrength = value * 2.55;
@@ -381,7 +525,7 @@ function applyEffects() {
                         b += noise;
                     }
                     break;
-                    
+
                 case 'invert':
                     if (value > 0) {
                         const invertStrength = value / 100;
@@ -391,16 +535,15 @@ function applyEffects() {
                     }
                     break;
             }
+
+            // Clamp
+            data[i] = Math.max(0, Math.min(255, r));
+            data[i + 1] = Math.max(0, Math.min(255, g));
+            data[i + 2] = Math.max(0, Math.min(255, b));
         }
-        
-        // Clamp values
-        data[i] = Math.max(0, Math.min(255, r));
-        data[i + 1] = Math.max(0, Math.min(255, g));
-        data[i + 2] = Math.max(0, Math.min(255, b));
+
+        ctx.putImageData(imageData, 0, 0);
     }
-    
-    // Put modified image data back (single operation)
-    ctx.putImageData(imageData, 0, 0);
 }
 
 // Helper function to draw halftone shape
@@ -430,6 +573,8 @@ function drawHalftoneShape(halftoneCtx, shape, centerX, centerY, shapeSize) {
         case 'line':
             halftoneCtx.moveTo(centerX - shapeSize / 2, centerY);
             halftoneCtx.lineTo(centerX + shapeSize / 2, centerY);
+            // Ensure stroke color matches fill color for consistency
+            if (!halftoneCtx.strokeStyle) halftoneCtx.strokeStyle = halftoneCtx.fillStyle || 'black';
             halftoneCtx.lineWidth = Math.max(1, shapeSize / 3);
             halftoneCtx.stroke();
             break;
@@ -437,11 +582,24 @@ function drawHalftoneShape(halftoneCtx, shape, centerX, centerY, shapeSize) {
 }
 
 // Apply halftone effect
-function applyHalftoneEffect() {
-    const halftoneConfig = effectValues['halftone'];
+function applyHalftoneEffect(halftoneInstance, options = {}) {
+    // options: { overlay: boolean, sampleImageData: ImageData }
+    // Support being called with the instance object; fallback to first config if not provided
+    let halftoneConfig;
+    if (halftoneInstance && halftoneInstance.id) {
+        halftoneConfig = effectValues[halftoneInstance.id];
+    } else {
+        // find any halftone config
+        const inst = activeEffects.find(e => e.name === 'halftone');
+        halftoneConfig = inst ? effectValues[inst.id] : null;
+    }
     if (!halftoneConfig) return;
-    
+
     const { shape, size, mode } = halftoneConfig;
+    // Debug log
+    try {
+        console.debug('applyHalftoneEffect', { id: halftoneInstance && halftoneInstance.id, shape, size, mode, options });
+    } catch (e) {}
     
     // Determine dot size based on selection
     let dotSize;
@@ -459,21 +617,27 @@ function applyHalftoneEffect() {
             dotSize = 8;
     }
     
-    // Get current canvas data
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const data = imageData.data;
-    
+    // Determine which image data to sample: options.sampleImageData (processed pixels) or current canvas
+    const sampleImageData = options.sampleImageData || ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = sampleImageData.data;
+
     // Create a new canvas for halftone
     const halftoneCanvas = document.createElement('canvas');
     halftoneCanvas.width = canvas.width;
     halftoneCanvas.height = canvas.height;
     const halftoneCtx = halftoneCanvas.getContext('2d');
-    
-    // Fill with white background
+    // Ensure normal compositing
+    halftoneCtx.globalCompositeOperation = 'source-over';
+
+    // Fill with white background (halftone is intended to be on white)
     halftoneCtx.fillStyle = 'white';
     halftoneCtx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Default fillStyle in case not set by mode inside loop
+    halftoneCtx.fillStyle = 'black';
     
     // Create halftone pattern
+    let shapesDrawn = 0;
     for (let y = 0; y < canvas.height; y += dotSize) {
         for (let x = 0; x < canvas.width; x += dotSize) {
             // Sample the center of the cell
@@ -487,8 +651,10 @@ function applyHalftoneEffect() {
             
             // Calculate brightness and shape size
             const brightness = (r + g + b) / 3;
-            const darkness = 1 - (brightness / 255);
-            const shapeSize = dotSize * darkness * 0.9;
+            const norm = Math.max(0, Math.min(1, brightness / 255));
+            // Emphasize dark areas but ensure a small minimum dot so something is visible
+            const darkness = Math.pow(1 - norm, 0.9);
+            const shapeSize = Math.max(dotSize * 0.05, dotSize * darkness * 0.9);
             
             if (shapeSize > 0.5) {
                 const centerX = x + dotSize / 2;
@@ -503,13 +669,36 @@ function applyHalftoneEffect() {
                 
                 // Draw the shape
                 drawHalftoneShape(halftoneCtx, shape, centerX, centerY, shapeSize);
+                shapesDrawn++;
             }
         }
     }
+    try { console.debug('applyHalftoneEffect shapesDrawn:', shapesDrawn); } catch (e) {}
+
+    // If nothing was drawn (very bright image or calculation), draw a minimal dot grid as fallback
+    if (shapesDrawn === 0) {
+        const fallbackSize = Math.max(1, Math.floor(dotSize * 0.15));
+        for (let y = 0; y < canvas.height; y += dotSize) {
+            for (let x = 0; x < canvas.width; x += dotSize) {
+                const centerX = x + dotSize / 2;
+                const centerY = y + dotSize / 2;
+                // use a subtle gray fallback so it's visible
+                halftoneCtx.fillStyle = (mode === 'color') ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.3)';
+                drawHalftoneShape(halftoneCtx, shape, centerX, centerY, fallbackSize);
+            }
+        }
+        try { console.debug('applyHalftoneEffect fallback shapesDrawn'); } catch (e) {}
+    }
     
-    // Draw halftone result back to main canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(halftoneCanvas, 0, 0);
+    // Composite halftone canvas over the main canvas
+    if (options.overlay) {
+        // draw halftone on top preserving existing pixels
+        ctx.drawImage(halftoneCanvas, 0, 0);
+    } else {
+        // replace main canvas (fallback)
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(halftoneCanvas, 0, 0);
+    }
 }
 
 // Download image
