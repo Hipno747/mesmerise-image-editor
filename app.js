@@ -36,7 +36,60 @@ const effectDefinitions = {
             mode: 'monochrome'
         }
     }
+    ,
+    sharpen: { name: 'Sharpen', min: 0, max: 200, default: 0, step: 1 },
+    sepia: { name: 'Sepia', min: 0, max: 100, default: 0, step: 1 },
+    tint: {
+        name: 'Color Tint',
+        type: 'custom',
+        defaults: {
+            color: '#ff0000',
+            mix: 30
+        }
+    }
 };
+
+// Helper: parse hex color to [r,g,b]
+function parseHexColor(hex) {
+    const h = (hex || '#000000').replace('#', '');
+    const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+    const bigint = parseInt(full, 16) || 0;
+    return [(bigint >> 16) & 255, (bigint >> 8) & 255, bigint & 255];
+}
+
+// Helper: simple convolution for Sharpen
+function applyConvolution(imageData, kernel) {
+    const src = imageData.data;
+    const w = imageData.width;
+    const h = imageData.height;
+    const output = new Uint8ClampedArray(src.length);
+    const kSize = Math.sqrt(kernel.length) | 0;
+    const half = Math.floor(kSize / 2);
+    const kernelSum = kernel.reduce((s, v) => s + v, 0) || 1;
+
+    for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+            let r = 0, g = 0, b = 0;
+            for (let ky = 0; ky < kSize; ky++) {
+                for (let kx = 0; kx < kSize; kx++) {
+                    const px = Math.min(w - 1, Math.max(0, x + kx - half));
+                    const py = Math.min(h - 1, Math.max(0, y + ky - half));
+                    const srcIdx = (py * w + px) * 4;
+                    const kval = kernel[ky * kSize + kx];
+                    r += src[srcIdx] * kval;
+                    g += src[srcIdx + 1] * kval;
+                    b += src[srcIdx + 2] * kval;
+                }
+            }
+            const dstIdx = (y * w + x) * 4;
+            output[dstIdx]     = Math.max(0, Math.min(255, r / kernelSum));
+            output[dstIdx + 1] = Math.max(0, Math.min(255, g / kernelSum));
+            output[dstIdx + 2] = Math.max(0, Math.min(255, b / kernelSum));
+            output[dstIdx + 3] = src[dstIdx + 3];
+        }
+    }
+    src.set(output);
+}
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -64,6 +117,8 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('dropdownMenu').classList.remove('show');
         }
     });
+    // Initialize crop overlay UI (hidden until used)
+    initCropOverlay();
 });
 
 // Handle image upload
@@ -79,6 +134,11 @@ function handleImageUpload(e) {
             resetEffects();
             document.getElementById('placeholder').style.display = 'none';
             canvas.classList.add('active');
+            // Show crop controls (start state)
+            const applyBtn = document.getElementById('applyCropBtn');
+            const cancelBtn = document.getElementById('cancelCropBtn');
+            if (applyBtn) { applyBtn.style.display = 'inline-block'; applyBtn.textContent = 'Start Crop'; }
+            if (cancelBtn) { cancelBtn.style.display = 'none'; }
             applyEffects();
         };
         img.src = event.target.result;
@@ -220,8 +280,47 @@ function createEffectControl(effectName, instanceId) {
             if (originalImage) applyEffects();
         });
     } else {
+        
+        // Tint custom control (single color + mix)
+            if (effectName === 'tint') {
+                div.innerHTML = `
+                <button class="remove-effect-btn" onclick="removeEffect('${instanceId}')">×</button>
+                <label>
+                    <span class="effect-name">${def.name}</span>
+                </label>
+                <div class="halftone-controls">
+                    <div class="halftone-control-group">
+                        <label for="${instanceId}-Color">Tint Color</label>
+                        <input type="color" id="${instanceId}-Color" value="${effectValues[instanceId] && effectValues[instanceId].color ? effectValues[instanceId].color : def.defaults.color}">
+                    </div>
+                    <div class="halftone-control-group">
+                        <label for="${instanceId}-Mix">Mix</label>
+                        <input type="range" id="${instanceId}-Mix" min="0" max="100" value="${effectValues[instanceId] && typeof effectValues[instanceId].mix !== 'undefined' ? effectValues[instanceId].mix : def.defaults.mix}" step="1">
+                        <span class="effect-value" id="${instanceId}MixValue">${effectValues[instanceId] && typeof effectValues[instanceId].mix !== 'undefined' ? effectValues[instanceId].mix : def.defaults.mix}</span>
+                    </div>
+                </div>
+                `;
+
+                const colorInput = div.querySelector(`#${instanceId}-Color`);
+                const mix = div.querySelector(`#${instanceId}-Mix`);
+                const mixVal = div.querySelector(`#${instanceId}MixValue`);
+
+                colorInput.addEventListener('input', (e) => {
+                    effectValues[instanceId].color = e.target.value;
+                    scheduleApplyEffects(120);
+                });
+                mix.addEventListener('input', (e) => {
+                    const v = parseInt(e.target.value, 10);
+                    effectValues[instanceId].mix = v;
+                    if (mixVal) mixVal.textContent = v;
+                    scheduleApplyEffects(60);
+                });
+
+                return div;
+            }
+
         // Duotone custom control (colors + mix)
-        if (effectName === 'duotone') {
+            if (effectName === 'duotone') {
             div.innerHTML = `
             <button class="remove-effect-btn" onclick="removeEffect('${instanceId}')">×</button>
             <label>
@@ -400,6 +499,27 @@ function applyEffects() {
         const name = inst.name;
         const value = effectValues[inst.id];
 
+        
+
+        // Sharpen: apply a small convolution kernel based on amount
+        if (name === 'sharpen') {
+            const amount = (typeof value === 'number') ? value : 0;
+            if (amount > 0) {
+                const strength = Math.min(1, Math.max(0, amount / 100));
+                const base = [
+                    -1, -1, -1,
+                    -1,  9, -1,
+                    -1, -1, -1
+                ];
+                const identity = [0,0,0,0,1,0,0,0,0];
+                const kernel = base.map((v, i) => identity[i] * (1 - strength) + v * strength);
+                const imd = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                applyConvolution(imd, kernel);
+                ctx.putImageData(imd, 0, 0);
+            }
+            continue;
+        }
+
         // Resolution: downscale then draw back (pixelate) using current canvas as source
         if (name === 'resolution') {
             if (resolutionApplied) {
@@ -471,6 +591,19 @@ function applyEffects() {
                     b = gray + saturationFactor * (b - gray);
                     break;
 
+                case 'sepia':
+                    // value: 0..100 intensity
+                    if (typeof value === 'number' && value > 0) {
+                        const t = Math.max(0, Math.min(1, value / 100));
+                        const sr = (r * 0.393) + (g * 0.769) + (b * 0.189);
+                        const sg = (r * 0.349) + (g * 0.686) + (b * 0.168);
+                        const sb = (r * 0.272) + (g * 0.534) + (b * 0.131);
+                        r = r * (1 - t) + sr * t;
+                        g = g * (1 - t) + sg * t;
+                        b = b * (1 - t) + sb * t;
+                    }
+                    break;
+
                 case 'duotone':
                     // value is an object: { colorA, colorB, mix, mode }
                     if (value && typeof value === 'object') {
@@ -497,6 +630,22 @@ function applyEffects() {
                         r = r * (1 - mix) + dr * mix;
                         g = g * (1 - mix) + dg * mix;
                         b = b * (1 - mix) + db * mix;
+                    }
+                    break;
+
+                case 'tint':
+                    // value is an object: { color, mix }
+                    if (value && typeof value === 'object') {
+                        const mix = (typeof value.mix === 'number') ? (value.mix / 100) : 0;
+                        if (mix > 0) {
+                            const tc = parseHexColor(value.color || '#000000');
+                            const tr = tc[0], tg = tc[1], tb = tc[2];
+                            // preserve luminance while applying tint color
+                            const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+                            r = r * (1 - mix) + (tr * lum) * mix;
+                            g = g * (1 - mix) + (tg * lum) * mix;
+                            b = b * (1 - mix) + (tb * lum) * mix;
+                        }
                     }
                     break;
 
@@ -699,6 +848,276 @@ function applyHalftoneEffect(halftoneInstance, options = {}) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(halftoneCanvas, 0, 0);
     }
+}
+
+// ----------------------
+// Crop overlay (interactive) implementation
+// ----------------------
+let cropState = {
+    active: false,
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    dragging: null,
+    startClientX: 0,
+    startClientY: 0,
+    startValue: 0
+};
+
+let cropElements = null;
+
+function initCropOverlay() {
+    const container = document.querySelector('.canvas-container');
+    if (!container) return;
+
+    // Overlay wrapper
+    const overlay = document.createElement('div');
+    overlay.className = 'crop-overlay';
+    overlay.style.display = 'none';
+
+    // Crop rect and bars
+    const rect = document.createElement('div');
+    rect.className = 'crop-rect';
+
+    const bars = {};
+    ['top', 'right', 'bottom', 'left'].forEach(side => {
+        const bar = document.createElement('div');
+        bar.className = `crop-bar ${side === 'top' || side === 'bottom' ? 'horizontal' : 'vertical'}`;
+        bar.dataset.side = side;
+        const val = document.createElement('div');
+        val.className = 'crop-value';
+        val.textContent = '';
+        bar.appendChild(val);
+        rect.appendChild(bar);
+        bars[side] = { bar, val };
+
+        // Pointer events
+        bar.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            bar.setPointerCapture(e.pointerId);
+            cropState.dragging = side;
+            cropState.startClientX = e.clientX;
+            cropState.startClientY = e.clientY;
+            cropState.startValue = cropState[side];
+        });
+    });
+
+    overlay.appendChild(rect);
+    container.appendChild(overlay);
+
+    // Store elements
+    cropElements = { overlay, rect, bars };
+
+    // Global pointer move/up handlers
+    window.addEventListener('pointermove', (e) => {
+        if (!cropState.dragging || !cropElements) return;
+        const rectCanvas = canvas.getBoundingClientRect();
+        const dx = e.clientX - cropState.startClientX;
+        const dy = e.clientY - cropState.startClientY;
+
+        // Convert movement to canvas pixels
+        if (cropState.dragging === 'left' || cropState.dragging === 'right') {
+            const delta = Math.round((dx / rectCanvas.width) * canvas.width);
+            if (cropState.dragging === 'left') {
+                cropState.left = Math.max(0, Math.min(canvas.width - cropState.right - 1, cropState.startValue + delta));
+            } else {
+                cropState.right = Math.max(0, Math.min(canvas.width - cropState.left - 1, cropState.startValue - delta));
+            }
+        } else {
+            const delta = Math.round((dy / rectCanvas.height) * canvas.height);
+            if (cropState.dragging === 'top') {
+                cropState.top = Math.max(0, Math.min(canvas.height - cropState.bottom - 1, cropState.startValue + delta));
+            } else {
+                cropState.bottom = Math.max(0, Math.min(canvas.height - cropState.top - 1, cropState.startValue - delta));
+            }
+        }
+
+        updateCropOverlay();
+    });
+
+    window.addEventListener('pointerup', (e) => {
+        if (!cropState.dragging) return;
+        try { const bar = cropElements.bars[cropState.dragging].bar; bar.releasePointerCapture(e.pointerId); } catch (er) {}
+        cropState.dragging = null;
+    });
+
+    // Wire header buttons
+    const applyBtn = document.getElementById('applyCropBtn');
+    const cancelBtn = document.getElementById('cancelCropBtn');
+
+    applyBtn.addEventListener('click', () => {
+        if (!cropState.active) {
+            startCropMode();
+        } else {
+            applyCrop();
+        }
+    });
+    cancelBtn.addEventListener('click', () => {
+        cancelCrop();
+    });
+}
+
+function startCropMode() {
+    if (!originalImage || !cropElements) return;
+    // Show overlay and initialize crop rectangle (10% inset)
+    cropState.active = true;
+    cropState.left = Math.round(canvas.width * 0.1);
+    cropState.top = Math.round(canvas.height * 0.1);
+    cropState.right = Math.round(canvas.width * 0.1);
+    cropState.bottom = Math.round(canvas.height * 0.1);
+    updateCropOverlay();
+    cropElements.overlay.style.display = 'block';
+    const applyBtn = document.getElementById('applyCropBtn');
+    const cancelBtn = document.getElementById('cancelCropBtn');
+    if (applyBtn) {
+        applyBtn.textContent = 'Apply Crop';
+        // make apply green while cropping
+        applyBtn.style.background = '#28a745';
+        applyBtn.style.color = '#ffffff';
+        applyBtn.style.border = 'none';
+    }
+    if (cancelBtn) {
+        cancelBtn.style.display = 'inline-block';
+        // make cancel red while cropping
+        cancelBtn.style.background = '#ff4757';
+        cancelBtn.style.color = '#ffffff';
+        cancelBtn.style.border = 'none';
+    }
+
+    // Hide percentage labels while cropping
+    try {
+        Object.values(cropElements.bars).forEach(({ val }) => {
+            if (val && val.style) val.style.display = 'none';
+        });
+    } catch (e) {}
+}
+
+
+function updateCropOverlay() {
+    if (!cropElements) return;
+    const rectCanvas = canvas.getBoundingClientRect();
+    const scaleX = rectCanvas.width / canvas.width;
+    const scaleY = rectCanvas.height / canvas.height;
+
+    const leftPx = Math.round(cropState.left * scaleX);
+    const topPx = Math.round(cropState.top * scaleY);
+    const rightPx = Math.round(cropState.right * scaleX);
+    const bottomPx = Math.round(cropState.bottom * scaleY);
+
+    // Position the crop rect within the overlay
+    const r = cropElements.rect;
+    r.style.left = leftPx + 'px';
+    r.style.top = topPx + 'px';
+    r.style.width = Math.max(2, Math.round(rectCanvas.width - leftPx - rightPx)) + 'px';
+    r.style.height = Math.max(2, Math.round(rectCanvas.height - topPx - bottomPx)) + 'px';
+
+    // Update bar value labels
+    cropElements.bars.left.val.textContent = `${Math.round((cropState.left / canvas.width) * 100)}%`;
+    cropElements.bars.right.val.textContent = `${Math.round((cropState.right / canvas.width) * 100)}%`;
+    cropElements.bars.top.val.textContent = `${Math.round((cropState.top / canvas.height) * 100)}%`;
+    cropElements.bars.bottom.val.textContent = `${Math.round((cropState.bottom / canvas.height) * 100)}%`;
+
+    // Position bars (top/bottom as horizontal, left/right as vertical)
+    try {
+        const topBar = cropElements.bars.top.bar;
+        const bottomBar = cropElements.bars.bottom.bar;
+        const leftBar = cropElements.bars.left.bar;
+        const rightBar = cropElements.bars.right.bar;
+
+        topBar.style.top = '-6px';
+        bottomBar.style.bottom = '-6px';
+        leftBar.style.left = '-6px';
+        rightBar.style.right = '-6px';
+    } catch (e) {}
+}
+
+function hideCropOverlay() {
+    if (!cropElements) return;
+    cropElements.overlay.style.display = 'none';
+    cropState.active = false;
+    document.getElementById('applyCropBtn').textContent = 'Start Crop';
+    document.getElementById('cancelCropBtn').style.display = 'none';
+
+    // Restore button styles to defaults
+    try {
+        const applyBtn = document.getElementById('applyCropBtn');
+        const cancelBtn = document.getElementById('cancelCropBtn');
+        if (applyBtn) {
+            applyBtn.style.background = '';
+            applyBtn.style.color = '';
+            applyBtn.style.border = '';
+        }
+        if (cancelBtn) {
+            cancelBtn.style.background = '';
+            cancelBtn.style.color = '';
+            cancelBtn.style.border = '';
+        }
+    } catch (e) {}
+
+    // Restore percentage labels so they're visible next time crop is started
+    try {
+        Object.values(cropElements.bars).forEach(({ val }) => {
+            if (val && val.style) val.style.display = '';
+        });
+    } catch (e) {}
+}
+
+function cancelCrop() {
+    // Simply hide overlay and reset
+    hideCropOverlay();
+}
+
+function applyCrop() {
+    if (!originalImage || !cropElements) return;
+
+    const sx = cropState.left;
+    const sy = cropState.top;
+    const sw = Math.max(1, canvas.width - cropState.left - cropState.right);
+    const sh = Math.max(1, canvas.height - cropState.top - cropState.bottom);
+
+    // Aspect ratio check: preserve only if cropped area has same ratio as original canvas
+    const origRatio = canvas.width / canvas.height;
+    const cropRatio = sw / sh;
+    const tolerance = 0.01; // allow small rounding differences
+
+    const off = document.createElement('canvas');
+    off.width = sw;
+    off.height = sh;
+    const offCtx = off.getContext('2d');
+    offCtx.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+
+    if (Math.abs(cropRatio - origRatio) < tolerance) {
+        // Aspect ratio preserved -> scale cropped region to fill current canvas (zoom)
+        try {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(off, 0, 0, canvas.width, canvas.height);
+        } catch (e) {
+            try { console.debug('Crop apply drawImage failed', e); } catch (ee) {}
+        }
+    } else {
+        // Not preserved -> replace canvas with cropped size (no distortion)
+        canvas.width = sw;
+        canvas.height = sh;
+        try {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(off, 0, 0);
+        } catch (e) {
+            try { console.debug('Crop apply drawImage failed', e); } catch (ee) {}
+        }
+    }
+
+    // Update originalImage to the new cropped image so further effects apply to it
+    const dataUrl = canvas.toDataURL();
+    const img = new Image();
+    img.onload = () => {
+        originalImage = img;
+        // Re-render effects on the new original image
+        applyEffects();
+    };
+    img.src = dataUrl;
+
+    hideCropOverlay();
 }
 
 // Download image

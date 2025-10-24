@@ -15,6 +15,8 @@
                     <input type="file" id="imageUpload" accept="image/*" hidden>
                     Choose Image
                 </label>
+                    <button id="applyCropBtn" class="download-btn" style="display:none">Apply Crop</button>
+                    <button id="cancelCropBtn" class="reset-btn" style="display:none">Cancel Crop</button>
                 <button id="downloadBtn" class="download-btn">Download</button>
                 <button id="resetBtn" class="reset-btn">Reset</button>
             </div>
@@ -50,10 +52,13 @@
                         <div class="dropdown-item" data-effect="brightness">Brightness</div>
                         <div class="dropdown-item" data-effect="contrast">Contrast</div>
                         <div class="dropdown-item" data-effect="saturation">Saturation</div>
+                        <div class="dropdown-item" data-effect="sharpen">Sharpen</div>
                         <div class="dropdown-item" data-effect="vignette">Vignette</div>
                         <div class="dropdown-item" data-effect="grain">Camera Grain</div>
                         <div class="dropdown-item" data-effect="resolution">Resolution</div>
                         <div class="dropdown-item" data-effect="duotone">Duotone</div>
+                        <div class="dropdown-item" data-effect="sepia">Sepia</div>
+                        <div class="dropdown-item" data-effect="tint">Color Tint</div>
                         <div class="dropdown-item" data-effect="invert">Invert</div>
                         <div class="dropdown-item" data-effect="halftone">Halftone</div>
                     </div>
