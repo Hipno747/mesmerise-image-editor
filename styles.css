@@ -28,6 +28,9 @@ header {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    /* Ensure header (and its buttons) render above the crop overlay's large box-shadow */
+    position: relative;
+    z-index: 3000;
 }
 
 header h1 {
@@ -38,6 +41,9 @@ header h1 {
 .header-controls {
     display: flex;
     gap: 10px;
+    /* ensure the control buttons inside the header are above overlays */
+    position: relative;
+    z-index: 3100;
 }
 
 .upload-btn, .download-btn, .reset-btn {
@@ -67,6 +73,53 @@ header h1 {
     height: calc(100vh - 140px);
     min-height: 600px;
 }
+
+/* Layers Section (left of preview) */
+.layers-section {
+    width: 260px;
+    background: #fafafa;
+    border-right: 1px solid #eaeaea;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+}
+
+.layers-section h3 {
+    margin-bottom: 10px;
+    font-size: 16px;
+    color: #333;
+}
+
+.layers-controls { display:flex; gap:10px; align-items:center }
+
+.layers-list {
+    margin-top: 12px;
+    list-style: none;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+}
+
+.layers-list li {
+    padding: 10px;
+    background: white;
+    border: 1px solid #e9e9e9;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: grab;
+}
+
+.layers-list li.dragging { opacity: 0.6 }
+.layers-list li .layer-name { font-weight:600; color:#333 }
+.layers-list li .layer-actions { display:flex; gap:6px }
+.layers-list li.base-layer { background:#f0f6ff; cursor:default }
+/* selected layer highlight */
+.layers-list li.selected { box-shadow: 0 4px 14px rgba(102,126,234,0.18); border-color: #667eea; }
+
 
 /* Preview Section */
 .preview-section {
@@ -207,6 +260,23 @@ header h1 {
 .remove-effect-btn:hover {
     background: #ee5a6f;
     transform: scale(1.1);
+}
+
+/* Small red remove button for layers (matches cancel crop style while compact) */
+.layer-remove-btn {
+    background: #ff4757; /* red like cancel */
+    color: #ffffff;
+    border: none;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.layer-remove-btn:hover {
+    filter: brightness(0.92);
+    transform: translateY(-1px);
 }
 
 /* Add Effect Button */
@@ -395,6 +465,12 @@ input[type="range"]::-moz-range-thumb:hover {
     box-shadow: 0 0 0 9999px rgba(0,0,0,0.35);
     pointer-events: auto;
 }
+
+/* Selection overlay for layer move/resize */
+.selection-overlay { position: absolute; left: 0; top: 0; right: 0; bottom: 0; pointer-events: none; }
+.selection-rect { position: absolute; pointer-events: auto; }
+.sel-handle { position: absolute; width: 12px; height: 12px; background: #fff; border: 2px solid #667eea; border-radius: 3px; box-sizing: border-box; pointer-events: auto; }
+
 .crop-bar {
     position: absolute;
     background: rgba(255,255,255,0.2);
@@ -411,4 +487,56 @@ input[type="range"]::-moz-range-thumb:hover {
     border-radius: 4px;
     transform: translate(-50%, -150%);
     pointer-events: none;
+}
+
+/* While a crop is active we want only the Apply/Cancel crop buttons visible
+   in the header — hide the rest of the header buttons to avoid accidental
+   actions while cropping. JS toggles `body.crop-active`. */
+body.crop-active .header-controls > button:not(#applyCropBtn):not(#cancelCropBtn) {
+    display: none !important;
+}
+
+/* While a resize is active show only the resize apply/cancel buttons */
+body.resize-active .header-controls > button:not(#applyResizeBtn):not(#cancelResizeBtn) {
+    display: none !important;
+}
+
+/* Disable interactions on layers/effects UI while crop/resize overlays are active */
+body.crop-active .effects-panel,
+body.resize-active .effects-panel,
+body.crop-active .layers-section,
+body.resize-active .layers-section {
+    pointer-events: none;
+    opacity: 0.6;
+}
+
+/* Hide the effects dropdown while crop/resize is active to avoid animation */
+body.crop-active .dropdown-menu,
+body.resize-active .dropdown-menu {
+    display: none !important;
+}
+
+/* Make layer rows non-draggable cursor while disabled */
+body.crop-active .layers-list li,
+body.resize-active .layers-list li {
+    cursor: default !important;
+}
+
+/* Resize overlay styles (reuse crop styling visually) */
+.resize-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+}
+.resize-rect {
+    position: absolute;
+    border: 2px dashed rgba(255,255,255,0.9);
+    box-shadow: 0 0 0 9999px rgba(0,0,0,0.35);
+    pointer-events: auto;
+}
+.resize-overlay .crop-bar { /* reuse crop-bar rules for handles */
+    pointer-events: auto;
 }

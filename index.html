@@ -11,19 +11,28 @@
         <header>
             <h1>Mesmerise Image Editor</h1>
             <div class="header-controls">
-                <label for="imageUpload" class="upload-btn">
-                    <input type="file" id="imageUpload" accept="image/*" hidden>
-                    Choose Image
-                </label>
-                    <button id="applyCropBtn" class="download-btn" style="display:none">Apply Crop</button>
-                    <button id="cancelCropBtn" class="reset-btn" style="display:none">Cancel Crop</button>
+                <!-- Image upload moved to Layers panel -->
+                <button id="applyCropBtn" class="download-btn" style="display:none">Crop Layer</button>
+                <button id="applyResizeBtn" class="download-btn" style="display:none">Apply Resize</button>
+                <button id="resizeLayerBtn" class="download-btn" style="display:none">Resize Layer</button>
+                <button id="cancelResizeBtn" class="reset-btn" style="display:none">Cancel Resize</button>
+                <button id="cancelCropBtn" class="reset-btn" style="display:none">Cancel Crop</button>
                 <button id="downloadBtn" class="download-btn">Download</button>
                 <button id="resetBtn" class="reset-btn">Reset</button>
             </div>
         </header>
         
         <div class="main-content">
-            <!-- Image Preview Section -->
+            <!-- Layers + Image Preview Section -->
+            <div class="layers-section">
+                <h3>Layers</h3>
+                <div class="layers-controls">
+                    <button id="addLayerBtn" class="add-effect-btn">Add Layer</button>
+                    <input type="file" id="layerUpload" accept="image/*" hidden>
+                </div>
+                <ul id="layersList" class="layers-list"></ul>
+            </div>
+
             <div class="preview-section">
                 <div class="canvas-container">
                     <canvas id="imageCanvas"></canvas>
@@ -60,7 +69,6 @@
                         <div class="dropdown-item" data-effect="sepia">Sepia</div>
                         <div class="dropdown-item" data-effect="tint">Color Tint</div>
                         <div class="dropdown-item" data-effect="invert">Invert</div>
-                        <div class="dropdown-item" data-effect="halftone">Halftone</div>
                     </div>
                 </div>
             </div>
